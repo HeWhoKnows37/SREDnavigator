@@ -20,7 +20,7 @@ class JiraTicketInput(BaseModel):
 
 
 class NarrativeRequest(BaseModel):
-    project_name: str = Field(default="SR&ED Navigator")
+    project_name: str = Field(default="ShRED")
     commits: List[CommitInput] = Field(default_factory=list)
     jira_tickets: List[JiraTicketInput] = Field(default_factory=list)
 
@@ -28,27 +28,30 @@ class NarrativeRequest(BaseModel):
 class GitHubRequest(BaseModel):
     owner: str = Field(..., min_length=1)
     repository: str = Field(..., min_length=1)
-    project_name: str = Field(default="SR&ED Navigator")
+    project_name: str = Field(default="ShRED")
     access_token: Optional[str] = None
     since: Optional[str] = Field(default=None, description="ISO date for earliest evidence")
-    max_items: int = Field(default=50, ge=1, le=100)
+    max_items: int = Field(default=100, ge=1, le=200)
 
 
 class NarrativeResponse(BaseModel):
     project_name: str
     scientific_uncertainty: str
+    work_performed: str
     technical_advancement: str
     evidence_summary: str
     source_commit_count: int
     source_ticket_count: int
     used_llm: bool
     source_repository: Optional[str] = None
+    applicable: bool
+    applicability_reason: str
 
 
 class T661ExportRequest(BaseModel):
-    narrative: NarrativeResponse
-    claimant_name: str = ""
-    tax_year_start: str = ""
-    tax_year_end: str = ""
+    narratives: List[NarrativeResponse] = Field(min_length=1)
+    claimant_name: str = "JJ Jameson"
+    tax_year_start: str = "2026-01-01"
+    tax_year_end: str = "2026-12-31"
     project_title: str = ""
     project_code: str = ""

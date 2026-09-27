@@ -24,17 +24,35 @@ def _get(path: str, token: Optional[str], params: Dict[str, Any]) -> Any:
     return response.json()
 
 
+def _get_collection(path: str, token: Optional[str], params: Dict[str, Any], limit: int) -> List[Any]:
+    items: List[Any] = []
+    page = 1
+    while len(items) < limit:
+        page_params = dict(params)
+        page_params.update({"page": page, "per_page": min(100, limit - len(items))})
+        batch = _get(path, token, page_params)
+        if not isinstance(batch, list) or not batch:
+            break
+        items.extend(batch)
+        if len(batch) < page_params["per_page"]:
+            break
+        page += 1
+    return items[:limit]
+
+
 def build_request_from_github(config: GitHubRequest) -> NarrativeRequest:
     repository = f"{config.owner}/{config.repository}"
-    commits_data = _get(
+    commits_data = _get_collection(
         f"/repos/{repository}/commits",
         config.access_token,
-        {"per_page": config.max_items, "since": config.since} if config.since else {"per_page": config.max_items},
+        {"since": config.since} if config.since else {},
+        config.max_items,
     )
-    issues_data = _get(
+    issues_data = _get_collection(
         f"/repos/{repository}/issues",
         config.access_token,
-        {"state": "all", "per_page": config.max_items},
+        {"state": "all"},
+        config.max_items,
     )
 
     commits: List[CommitInput] = []

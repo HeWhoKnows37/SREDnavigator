@@ -1,2 +1,1 @@
-"""SR&ED Navigator package."""
-
+"""ShRED package."""
