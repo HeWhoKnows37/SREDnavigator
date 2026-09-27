@@ -1,0 +1,31 @@
+{
+  "project_name": "SR&ED Navigator",
+  "commits": [
+    {
+      "hash": "a1b2c3d",
+      "author": "dev1@example.com",
+      "message": "Refactor the ingestion pipeline to handle inconsistent commit metadata",
+      "files_changed": ["src/ingestion/parser.py", "src/ingestion/normalizer.py"],
+      "diff_summary": "Added fallback parsing and validation for missing repository fields."
+    },
+    {
+      "hash": "f7e8d9c",
+      "author": "dev2@example.com",
+      "message": "Reduce latency in evidence extraction for large repositories",
+      "files_changed": ["src/ai_engine.py"],
+      "diff_summary": "Introduced batching, caching, and response size limits."
+    }
+  ],
+  "jira_tickets": [
+    {
+      "key": "SRD-101",
+      "summary": "Investigate uncertain mapping from code commits to Form T661 language",
+      "description": "The team needs a reliable way to translate technical work logs into CRA-compliant narratives."
+    },
+    {
+      "key": "SRD-108",
+      "summary": "Validate whether heuristic evidence extraction is sufficient for pilot users",
+      "description": "Compare generated narratives against manually drafted claims and identify gaps."
+    }
+  ]
+}
