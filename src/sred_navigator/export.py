@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from io import BytesIO
 import xml.etree.ElementTree as ET
+from copy import deepcopy
 
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
@@ -29,7 +30,7 @@ def export_narrative_to_pdf(narrative: NarrativeResponse, output_path: str | Pat
 
     y = height - 50
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y, f"SR&ED Navigator - {narrative.project_name}")
+    pdf.drawString(50, y, f"ShRED - {narrative.project_name}")
 
     pdf.setFont("Helvetica", 10)
     y -= 30
@@ -79,15 +80,18 @@ def _draw_wrapped(pdf: canvas.Canvas, text: str, x: float, y: float, width: floa
 
 
 def export_narrative_to_t661(
-    narrative: NarrativeResponse,
+    narratives: list[NarrativeResponse],
     output_path: str | Path,
-    claimant_name: str = "",
-    tax_year_start: str = "",
-    tax_year_end: str = "",
+    claimant_name: str = "JJ Jameson",
+    tax_year_start: str = "2026-01-01",
+    tax_year_end: str = "2026-12-31",
     project_title: str = "",
     project_code: str = "",
 ) -> Path:
     """Overlay the generated project information onto CRA's static T661 template."""
+    narratives = [narrative for narrative in narratives if narrative.applicable]
+    if not narratives:
+        raise ValueError("At least one Applicable project is required to generate a T661")
     template = Path(__file__).resolve().parents[2] / "t661-fill-26e.pdf"
     if not template.exists():
         raise FileNotFoundError(f"CRA T661 template not found at {template}")
@@ -99,7 +103,7 @@ def export_narrative_to_t661(
             source,
             template,
             output_path,
-            narrative,
+            narratives,
             claimant_name,
             tax_year_start,
             tax_year_end,
@@ -117,16 +121,16 @@ def export_narrative_to_t661(
     pdf.drawString(165, 590, tax_year_start[:20])
     pdf.drawString(375, 590, tax_year_end[:20])
     pdf.drawString(275, 553, "1")
-    pdf.drawString(75, 530, narrative.source_repository or "")
+    pdf.drawString(75, 530, narratives[0].source_repository or "")
     pdf.showPage()
 
     # Page 2, Part 2: keep CRA section labels and place concise text in their boxes.
     pdf.setFont("Helvetica", 8)
-    pdf.drawString(75, 680, f"{project_title or narrative.project_name} {project_code}".strip()[:90])
+    pdf.drawString(75, 680, f"{project_title or narratives[0].project_name} {project_code}".strip()[:90])
     pdf.drawString(190, 520, "Generated from repository evidence")
-    _draw_wrapped(pdf, _words(narrative.scientific_uncertainty, 350), 55, 425, 500, 9, 10)
-    _draw_wrapped(pdf, _words(narrative.technical_advancement, 700), 55, 280, 500, 9, 14)
-    _draw_wrapped(pdf, _words(narrative.evidence_summary, 350), 55, 95, 500, 9, 4)
+    _draw_wrapped(pdf, _words(narratives[0].scientific_uncertainty, 350), 55, 425, 500, 9, 10)
+    _draw_wrapped(pdf, _words(narratives[0].technical_advancement, 700), 55, 280, 500, 9, 14)
+    _draw_wrapped(pdf, _words(narratives[0].evidence_summary, 350), 55, 95, 500, 9, 4)
     pdf.showPage()
 
     for _ in range(len(source.pages) - 2):
@@ -162,11 +166,29 @@ def _set_xfa_value(root: ET.Element, field_path: str, value: str) -> None:
     raise ValueError(f"XFA field not found: {field_path}")
 
 
+def _enable_repeating_project_pages(template_root: ET.Element) -> None:
+    namespace = "http://www.xfa.org/schema/xfa-template/3.3/"
+    for element in template_root.iter():
+        if element.tag.rsplit("}", 1)[-1] != "subform":
+            continue
+        if element.attrib.get("name") not in {"Page2", "Page3"}:
+            continue
+        occur = next(
+            (child for child in element if child.tag.rsplit("}", 1)[-1] == "occur"),
+            None,
+        )
+        if occur is None:
+            occur = ET.Element(f"{{{namespace}}}occur")
+            element.insert(0, occur)
+        occur.set("min", "0")
+        occur.set("max", "-1")
+
+
 def _export_xfa_t661(
     source: PdfReader,
     template: Path,
     output_path: str | Path,
-    narrative: NarrativeResponse,
+    narratives: list[NarrativeResponse],
     claimant_name: str,
     tax_year_start: str,
     tax_year_end: str,
@@ -175,27 +197,51 @@ def _export_xfa_t661(
 ) -> Path:
     xfa = source.trailer["/Root"]["/AcroForm"].get_object()["/XFA"]
     datasets_stream = None
+    template_stream = None
     for index in range(0, len(xfa), 2):
         if str(xfa[index]) == "datasets":
             datasets_stream = xfa[index + 1].get_object()
-            break
+        elif str(xfa[index]) == "template":
+            template_stream = xfa[index + 1].get_object()
     if datasets_stream is None:
         raise ValueError(f"XFA datasets packet not found in {template.name}")
+    if template_stream is None:
+        raise ValueError(f"XFA template packet not found in {template.name}")
+
+    xfa_namespace = "http://www.xfa.org/schema/xfa-data/1.0/"
 
     root = ET.fromstring(datasets_stream.get_data())
-    values = {
-        "Name_010": claimant_name,
-        "Projects_050": "1",
-        "Field_200": f"{project_title or narrative.project_name} {project_code}".strip(),
-        "Field_242": _words(narrative.scientific_uncertainty, 350),
-        "Field_244": _words(narrative.evidence_summary, 700),
-        "Field_246": _words(narrative.technical_advancement, 350),
-    }
-    for field, value in values.items():
-        _set_xfa_value(root, field, value)
+    template_root = ET.fromstring(template_stream.get_data())
+    _enable_repeating_project_pages(template_root)
+    _set_xfa_value(root, "Name_010", claimant_name)
+    _set_xfa_value(root, "FromDate", tax_year_start)
+    _set_xfa_value(root, "ToDate", tax_year_end)
+    _set_xfa_value(root, "Projects_050", str(len(narratives)))
+    form = next((node for node in root.iter() if _local_name(node.tag) == "form1"), None)
+    if form is None:
+        raise ValueError("XFA form1 data group not found")
+    pages = [node for node in list(form) if _local_name(node.tag) in {"Page2", "Page3"}]
+    if len(pages) < 2:
+        raise ValueError("XFA project page groups not found")
+    page2, page3 = pages[0], pages[1]
+    for node in pages:
+        form.remove(node)
+    for narrative in narratives:
+        project_page = deepcopy(page2)
+        project_page.set(f"{{{xfa_namespace}}}dataNode", "dataGroup")
+        _set_xfa_value(project_page, "Field_200", f"{narrative.project_name} {project_code}".strip())
+        _set_xfa_value(project_page, "Field_242", _words(narrative.scientific_uncertainty, 350))
+        _set_xfa_value(project_page, "Field_244", _words(narrative.work_performed, 700))
+        _set_xfa_value(project_page, "Field_246", _words(narrative.technical_advancement, 350))
+        project_page3 = deepcopy(page3)
+        project_page3.set(f"{{{xfa_namespace}}}dataNode", "dataGroup")
+        form.append(project_page)
+        form.append(project_page3)
 
     updated_datasets = ET.tostring(root, encoding="utf-8", xml_declaration=False)
+    updated_template = ET.tostring(template_root, encoding="utf-8", xml_declaration=False)
     datasets_stream.set_data(updated_datasets)
+    template_stream.set_data(updated_template)
 
     writer = PdfWriter()
     writer.clone_document_from_reader(source)

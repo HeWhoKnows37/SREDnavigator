@@ -1,4 +1,4 @@
-# SR&ED Navigator
+# ShRED
 
 MVP for an automated SR&ED / Form T661 narrative generator.
 
@@ -37,11 +37,17 @@ streamlit run src/sred_navigator/streamlit_app.py
 
 ## GitHub and T661 workflow
 
-Enter a repository as `owner/repository` in the Streamlit app. Public repositories
-work without a token. For private repositories, create a GitHub fine-grained
-token with read-only access to repository metadata, commits, and issues, then
-paste it into the password field. The token is sent only to the local API and
-is not written to disk.
+Sign in to the Streamlit MVP with `internal@shred.com` and `password123`.
+Add each repository as `owner/repository`. Public repositories work without a
+token. For private repositories, create a GitHub fine-grained token with
+read-only access to repository metadata, commits, and issues, then paste it
+into the project form. The token is sent only to the local API and is not
+written to disk.
+
+Evaluate projects individually. Gemini marks each project as Applicable or Not
+Applicable based on its evidence. A T661 can be generated only after every
+added project has been evaluated; all evaluated projects are included in the
+fillable template.
 
 The downloaded PDF preserves the fillable CRA T661 template and populates the
 claimant, project, and generated Part 2 narrative fields. The replacement
@@ -55,20 +61,4 @@ fields in the official CRA workflow before filing.
 - The synthesis layer requires `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and uses Gemini Flash.
 - If Gemini is not configured, or its response is invalid, the API returns an error; it never substitutes generated text.
 
-## API key configuration
-
-Copy `.env.example` to `.env` in the repository root and replace the placeholder
-with your Gemini API key:
-
-```dotenv
-GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-3.1-flash-lite
 ```
-
-The application loads `.env` automatically. You can also set `GEMINI_API_KEY`
-as an operating-system environment variable. Never commit `.env` or put the key
-directly in Python source code.
-
-The Gemini API may restrict which models are available to new accounts. If your
-account reports that a model is unavailable, set `GEMINI_MODEL` to the model
-name recommended in the API error.

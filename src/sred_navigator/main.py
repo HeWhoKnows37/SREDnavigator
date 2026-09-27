@@ -10,7 +10,7 @@ from .export import export_narrative_to_t661
 from .github import build_request_from_github
 from .models import GitHubRequest, NarrativeRequest, NarrativeResponse, T661ExportRequest
 
-app = FastAPI(title="SR&ED Navigator API", version="0.1.0")
+app = FastAPI(title="ShRED API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,16 +45,22 @@ def synthesize_github_narrative(payload: GitHubRequest) -> NarrativeResponse:
 
 @app.post("/api/export/t661")
 def export_t661(payload: T661ExportRequest) -> FileResponse:
+    applicable_narratives = [narrative for narrative in payload.narratives if narrative.applicable]
+    if not applicable_narratives:
+        raise HTTPException(
+            status_code=422,
+            detail="No Applicable projects are available for the T661.",
+        )
     try:
         output = NamedTemporaryFile(suffix=".pdf", delete=False)
         output.close()
         path = export_narrative_to_t661(
-            payload.narrative,
+            applicable_narratives,
             output.name,
             claimant_name=payload.claimant_name,
             tax_year_start=payload.tax_year_start,
             tax_year_end=payload.tax_year_end,
-            project_title=payload.project_title or payload.narrative.project_name,
+            project_title=payload.project_title,
             project_code=payload.project_code,
         )
         return FileResponse(path, media_type="application/pdf", filename="t661-sred-claim.pdf")
